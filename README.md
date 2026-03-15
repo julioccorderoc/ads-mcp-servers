@@ -48,6 +48,7 @@ MCP endpoint: `http://localhost:9080/mcp`
 | File | Purpose |
 | --- | --- |
 | [CLAUDE.md](CLAUDE.md) | Agent instructions, conventions, env var rules |
+| [AGENT.md](AGENT.md) | n8n agent system prompt (Paid Ads Associate) |
 | [docs/roadmap.md](docs/roadmap.md) | Epic ledger |
 | [docs/architecture/](docs/architecture/) | ADRs |
 | [docs/architecture/rules/](docs/architecture/rules/) | Injected agent constraints |

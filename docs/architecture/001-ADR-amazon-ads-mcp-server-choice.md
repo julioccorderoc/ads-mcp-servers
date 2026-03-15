@@ -43,6 +43,8 @@ refresh token). No Openbridge account required.
 - Dependency on upstream image (`openbridge/amazon-ads-mcp`) — breaking changes require a version pin
 - No dedicated `/health` endpoint; Railway health checks must target `/sse` or be skipped
 - `reporting-version-3` package scope is broad; tool list may exceed n8n's MCP tool limit if many packages are enabled simultaneously
+- **`Amazon-Advertising-API-ClientId` is not auto-injected.** The server has `AMAZON_AD_API_CLIENT_ID` in env but does not inject it into tool calls. Every `rp_*` and `ac_*` call must include it explicitly. This is a FastMCP schema-generation issue: it mirrors the upstream OpenAPI header parameter as a required tool argument instead of filling it from env. Mitigation: hardcode the value in the n8n system prompt (client ID is a public OAuth app identifier, not a secret, but it still appears in prompt logs). Proper fix: monkey-patch the generated tool schemas at server startup to remove `Amazon-Advertising-API-ClientId` from the `required` array and inject it server-side — tracked in EPIC-001 Known Limitations.
+- **`download_export` is unusable for HTTP/SSE deployments.** The tool downloads the S3 report file to the Railway container filesystem (`/app/data/reports/s3-reports/`). There is no MCP tool or resource that reads file contents back to the client. In a local stdio deployment the Python process can read local files directly; in our HTTP/SSE Railway deployment the file is stranded. Workaround: the n8n workflow must fetch the S3 pre-signed URL directly via an HTTP Request node and pass the decompressed JSON back to the AI Agent — the agent should never call `download_export`. Tracked in EPIC-001 Known Limitations.
 
 ## 4. Rule Extraction (The "How" for Agents)
 

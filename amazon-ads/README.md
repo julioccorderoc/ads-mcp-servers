@@ -28,7 +28,31 @@ See [.env.example](../.env.example) for the full template.
 | `TRANSPORT` | Set to `http` |
 | `PORT` | Port to bind (Railway injects this automatically) |
 
-Phase 1 packages: `profiles,sponsored-products,reporting-version-3`
+**Active packages (production):** `profiles,reporting-version-3`
+
+> **Why not `sponsored-products`?** The `sponsored-products` package exposes 80+ tools with
+> deeply nested `$defs`/`$ref` schemas. n8n Cloud's MCP client internally converts JSON Schema
+> `$defs` to OpenAPI `components/schemas`, and the conversion produces dangling references
+> (e.g. `#/components/schemas/BidAnalysesPerPlacement`) that fail schema validation, blocking
+> the entire tool list from loading. Until n8n fixes this, keep SP excluded.
+> If you need SP write tools, use a direct MCP client that handles JSON Schema `$defs` natively.
+
+---
+
+## Available tools (19 total)
+
+| Prefix | Tool | Description |
+| --- | --- | --- |
+| `ac_` | `listProfiles` | List all ad profiles on the account |
+| `ac_` | `getProfileById` | Fetch a single profile by ID |
+| `ac_` | `updateProfiles` | Update profile metadata |
+| `rp_` | `createAsyncReport` | Submit an async report request |
+| `rp_` | `getAsyncReport` | Poll report status / get download URL |
+| `rp_` | `deleteAsyncReport` | Cancel a pending report |
+| built-in | `set_active_profile` / `get_active_profile` | Set default profile for subsequent calls |
+| built-in | `set_region` / `get_region` | Switch API region at runtime |
+| built-in | `download_export` / `list_downloads` | Download completed report files |
+| built-in | `start_oauth_flow` / `check_oauth_status` / `refresh_oauth_token` / `clear_oauth_tokens` | OAuth helpers |
 
 ---
 
@@ -71,14 +95,50 @@ curl -s http://localhost:9080/mcp \
 
 ## Railway deployment
 
-1. In the Railway dashboard, create a new service in the `ncl-ads-mcp` project.
-2. Connect the GitHub repo and set the **Root Directory** to `amazon-ads/`.
-3. Railway detects the `Dockerfile` and builds automatically.
-4. Add all env vars from the table above under Service → Variables.
-   Railway injects `PORT` automatically — do not set it manually.
-5. Deploy and confirm the build succeeds.
-6. The public HTTPS URL (e.g. `https://amazon-ads-mcp-production.up.railway.app/mcp`) is your MCP endpoint.
-7. In n8n Cloud, add an MCP Client tool node with **Streamable HTTP** transport pointing to that URL.
+### Initial setup (one-time)
+
+1. In the Railway dashboard, open the `ncl-ads-mcp` project → `amazon-ads` service.
+2. Under **Settings → Source**, set **Root Directory** to `amazon-ads`.
+   This is required — without it Railway builds from the repo root, picks up
+   the top-level `pyproject.toml`/`uv.lock`, and Railpack ignores the Dockerfile.
+3. Add all env vars from the table above under Service → Variables.
+   Do **not** set `PORT` or `HOST` — Railway injects `PORT` automatically.
+
+### Re-deploying manually
+
+Railway auto-deploys on every push to `master` once the root directory is set.
+For a manual deploy (e.g. from a machine without the repo):
+
+```bash
+# Run from the repo root
+railway up --service amazon-ads --ci --path-as-root amazon-ads
+```
+
+> **Why `--path-as-root`?** `railway up` archives from the git root by default, which
+> causes Railpack to detect Python instead of the Dockerfile. This flag scopes the
+> archive to the `amazon-ads/` subdirectory only.
+
+### How `$PORT` binding works
+
+The upstream `openbridge/amazon-ads-mcp` image has a hardcoded `CMD` with `--port 9080`.
+Railway's `startCommand` (from `railway.toml`) is passed in exec form — no shell — so
+`$PORT` would be received as a literal string and the server would crash.
+
+The fix is in [`Dockerfile`](Dockerfile): the CMD is overridden in **shell form**:
+
+```dockerfile
+CMD python -m amazon_ads_mcp.server --transport http --host 0.0.0.0 --port ${PORT:-9080}
+```
+
+Shell form means Docker wraps the command in `/bin/sh -c`, which expands `$PORT` at
+container startup. The `railway.toml` intentionally has **no** `startCommand` so this
+shell-form CMD is used instead of a Railway override (which would be exec form).
+
+### n8n Cloud wiring
+
+- Transport: **HTTP Streamable**
+- URL: `https://amazon-ads-production.up.railway.app/mcp`
+- Authentication: None
 
 ---
 
