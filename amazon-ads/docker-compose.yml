@@ -7,7 +7,7 @@ services:
     env_file:
       - ../.env
     environment:
-      # Runtime (env_file sets TRANSPORT=sse, HOST, PORT, LOG_LEVEL)
+      # Runtime (env_file sets TRANSPORT=http; overrides below take precedence)
       - HOST=0.0.0.0
       - PORT=9080
       - LOG_LEVEL=INFO
