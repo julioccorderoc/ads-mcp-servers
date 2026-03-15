@@ -7,8 +7,8 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Railway injects $PORT automatically; the server reads it at start.
-startCommand = "python -m amazon_ads_mcp.server --transport http --host 0.0.0.0 --port $PORT"
+# startCommand is intentionally omitted so Railway uses the Dockerfile CMD (shell form),
+# which properly expands $PORT via sh at container startup.
 # The SSE endpoint is at /sse; use it for health checks if Railway requires a path.
 # healthcheckPath = "/sse"
 healthcheckTimeout = 60
