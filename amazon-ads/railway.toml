@@ -1,0 +1,16 @@
+# Railway deployment config for the amazon-ads MCP service.
+# Set this service's root directory to "amazon-ads/" in the Railway dashboard.
+# All env vars are injected via Railway → Service → Variables (not committed here).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway injects $PORT automatically; the server reads it at start.
+startCommand = "python -m amazon_ads_mcp.server --transport http --host 0.0.0.0 --port $PORT"
+# The SSE endpoint is at /sse; use it for health checks if Railway requires a path.
+# healthcheckPath = "/sse"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
