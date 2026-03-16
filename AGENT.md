@@ -81,7 +81,8 @@ rp_createAsyncReport(
 
 ### Step 2 — Poll until complete
 
-Reports typically complete in **20–25 seconds**. Poll every 10–15 seconds.
+Reports typically complete in **30–90 seconds** (PENDING → PROCESSING → COMPLETED).
+Poll every **15 seconds**. Maximum **8 poll attempts** before giving up.
 
 ```text
 rp_getAsyncReport(
@@ -89,21 +90,32 @@ rp_getAsyncReport(
   reportId: <reportId from step 1>
 )
 // Status transitions: PENDING → PROCESSING → COMPLETED | FAILED
-// On COMPLETED: response contains url and fileSize
-// On FAILED: response contains failureReason
+// On COMPLETED: response contains url and fileSize — proceed to Step 3
+// On FAILED: response contains failureReason — report the error and stop
+// On PENDING or PROCESSING: wait 15 seconds and poll again
 ```
+
+If the report has not reached COMPLETED after 8 polls, stop and tell the user:
+"The report is still processing after 8 attempts. reportId: `<id>`. Wait 60 seconds and ask me to check it again."
+Do not create a new report — reuse the same reportId.
 
 ### Step 3 — Fetch and decompress the report
 
-When `rp_getAsyncReport` returns `status: COMPLETED`, call the `fetch_report` tool with the
-`url` field from the response. **Do NOT call `download_export`** — it stores the file on the
-server container with no way to read it back.
+When `rp_getAsyncReport` returns `status: COMPLETED`, call the `fetch_report` tool **immediately**
+with the `url` field from the response.
 
 ```text
 fetch_report(url: <url from step 2>)
 ```
 
-`fetch_report` returns `{ rows: [...], rowCount: N }` where `rows` is a flat array of objects —
+**Critical rules for Step 3:**
+
+- The parameter name is `url`. Do not pass it as `query` or any other key.
+- Pass the `url` value **verbatim** — do not truncate, shorten, modify, or re-encode it in any way. Pre-signed S3 URLs contain cryptographic signature parameters that break if altered.
+- Call `fetch_report` **immediately** after receiving `status: COMPLETED`. Do not do other work first; the URL expires after 1 hour.
+- **Do NOT call `download_export`** — it stores the file on the server container with no way to read it back.
+
+`fetch_report` returns `{ fileContent: [...] }` where `fileContent` is a flat array of objects —
 one per campaign (or keyword, search term, etc.) — with your requested columns as keys.
 Analyze this data directly.
 

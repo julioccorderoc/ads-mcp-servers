@@ -51,8 +51,59 @@ See [.env.example](../.env.example) for the full template.
 | `rp_` | `deleteAsyncReport` | Cancel a pending report |
 | built-in | `set_active_profile` / `get_active_profile` | Set default profile for subsequent calls |
 | built-in | `set_region` / `get_region` | Switch API region at runtime |
-| built-in | `download_export` / `list_downloads` | Download completed report files |
+| built-in | `download_export` / `list_downloads` | ⚠️ **Unusable in HTTP/SSE** — see note below |
 | built-in | `start_oauth_flow` / `check_oauth_status` / `refresh_oauth_token` / `clear_oauth_tokens` | OAuth helpers |
+
+### Fetching report data — use `fetch_report`, not `download_export`
+
+`download_export` downloads the S3 file to the Railway container filesystem (`/app/data/reports/`).
+There is no MCP tool or resource that reads it back. In an HTTP/SSE deployment the file is stranded.
+
+**Workaround:** add a `fetch_report` Code node to your n8n workflow:
+
+- **Input Schema** (Settings → Specify Input Schema → ON):
+
+  ```json
+  {"type":"object","properties":{"url":{"type":"string","description":"S3 pre-signed URL from rp_getAsyncReport"}},"required":["url"]}
+  ```
+
+- **Code:**
+
+  ```javascript
+  const url = $input.first().json.url;
+  if (!url) throw new Error('url not found. Received: ' + JSON.stringify($input.all()));
+
+  const https = require('https');
+  const zlib = require('zlib');
+
+  const buffer = await new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`S3 fetch failed: HTTP ${res.statusCode}`));
+        } else {
+          resolve(Buffer.concat(chunks));
+        }
+      });
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+
+  const rows = JSON.parse(zlib.gunzipSync(buffer).toString('utf8'));
+  return [{ json: { rows, rowCount: rows.length } }];
+  ```
+
+The S3 URL returns `Content-Type: binary/octet-stream` with no `Content-Encoding` header —
+n8n's HTTP Request node will not auto-decompress it. The Code node handles GZIP manually.
+
+> **Why not `fetch()`?** n8n Cloud's Code node sandbox does not expose `fetch` as a global.
+> Use the built-in `https` module instead — it works on all Node.js versions.
+>
+> **Why the Input Schema matters:** without it, n8n wraps the agent's single string argument
+> as `{ input: "..." }` instead of `{ url: "..." }`, causing a "url parameter is required" error
+> even though the URL is present.
 
 ---
 
